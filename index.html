@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Runway Friction Report Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#eef1f6;--panel:#fff;--ink:#14213d;--muted:#5b6782;--line:#cfd6e4;--aai:#1d3f94;--green:#7cbd84;--yellow:#cfd776;--amber:#ebb96d;--red:#d27a7a;--report:#f9fafc}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1526;--panel:#16203a;--ink:#e5eaf5;--muted:#9aa6c2;--line:#2b3758;--aai:#7ea2ff;--report:#101a30}}
+:root[data-theme="dark"]{--bg:#0e1526;--panel:#16203a;--ink:#e5eaf5;--muted:#9aa6c2;--line:#2b3758;--aai:#7ea2ff;--report:#101a30}
+*{box-sizing:inherit}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,"Segoe UI",Arial,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 18px 60px}
+header{display:flex;gap:16px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+header img{height:56px;background:#fff;border-radius:4px;padding:3px}
+h1{font:700 2rem/1.05 "Barlow Condensed",Barlow,sans-serif;margin:0}
+header p{margin:4px 0 0;color:var(--muted);max-width:64ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px}
+h2{font:700 1.25rem "Barlow Condensed",Barlow,sans-serif;margin:0 0 10px}
+#drop{border:2px dashed var(--aai);border-radius:6px;padding:30px 16px;text-align:center;cursor:pointer;color:var(--muted)}
+#drop.over{background:color-mix(in srgb,var(--aai) 10%,transparent)}
+#drop strong{color:var(--ink);display:block;font-size:1.1rem}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-top:12px}
+label{font-size:.85rem;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+input,select{font:inherit;font-size:.95rem;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);width:100%}
+.file{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.file h3{margin:0 0 6px;font-size:1rem;display:flex;justify-content:space-between;gap:8px}
+canvas.prev{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff}
+.status{font-size:.88rem;color:var(--muted);margin:6px 0}.err{color:#c0392b}
+button{font:600 .95rem Barlow,sans-serif;padding:9px 16px;border-radius:4px;border:1px solid var(--aai);background:var(--aai);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--aai)}button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,#drop:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+pre#report{background:var(--report);border:1px solid var(--line);border-radius:4px;padding:14px;overflow-x:auto;font:12.5px/1.45 Consolas,"Courier New",monospace;white-space:pre;min-height:300px;margin:0}
+.legend{font-size:.8rem;color:var(--muted)}
+.legend b{display:inline-block;width:14px;height:4px;vertical-align:middle;margin:0 4px 0 10px}
+.small{font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <img id="logoImg" alt="Airports Authority of India logo">
+  <div><h1>Runway friction report generator</h1>
+  <p>Drop the single PDF containing all friction graphs (95 and 65 km/h, 3 m and 6 m, L and R). Each page is read automatically and the AAI runway friction testing report is prepared in the standard format.</p></div>
+</header>
+<div class="grid">
+<div>
+<section>
+  <h2>Graph PDF</h2>
+  <div id="drop" tabindex="0" role="button" aria-label="Drop or choose the graph PDF"><strong>Drop the graph PDF here</strong>or click to choose (PDF; screenshots also accepted)</div>
+  <input type="file" id="fileIn" accept=".pdf,image/*" multiple hidden>
+  <div class="status" id="readStatus"></div>
+  <div class="fields">
+    <label>Segment length (m)<input id="seg" type="number" value="60" min="10" step="10"></label>
+    <label>Value per segment<select id="stat"><option value="min">Lowest μ in segment</option><option value="avg">Average μ in segment</option></select></label>
+  </div>
+  <div id="files"></div>
+</section>
+</div>
+<div>
+<section>
+  <h2>Report details</h2>
+  <div class="fields">
+    <label>Airport (header line)<input id="hdr" value="NSCBI AIRPORT/ KOLKATA-700052"></label>
+    <label>Name of airport<input id="airport" value="KOLKATA"></label>
+    <label>Runway<input id="rwy" value="01R-19L"></label>
+    <label>Measured from<input id="from" value="01R"></label>
+    <label>Date of test<input id="date" value=""></label>
+    <label>Time @95 km/h<input id="t95" value="11:52/12:28"></label>
+    <label>Time @65 km/h<input id="t65" value="11:39/12:04"></label>
+    <label>Measurement start (m)<input id="offset" type="number" value="150"></label>
+    <label>Calibration μ<input id="calib" value="0.770"></label>
+    <label>Technician<input id="tech" value="Mr. Rahul Kumar"></label>
+    <label>Technician designation<input id="techD" value="technician, M/s. THREE D"></label>
+    <label>Helper<input id="att" value="Mr. Samrat Sarkar"></label>
+    <label>Helper designation<input id="attD" value="Attendant, M/s. THREE D"></label>
+  </div>
+  <div class="fields">
+    <label>95 km/h minimum μ<input id="min95" type="number" step="0.01" value="0.34"></label>
+    <label>95 km/h maintenance μ<input id="mnt95" type="number" step="0.01" value="0.47"></label>
+    <label>65 km/h minimum μ<input id="min65" type="number" step="0.01" value="0.50"></label>
+    <label>65 km/h maintenance μ<input id="mnt65" type="number" step="0.01" value="0.60"></label>
+  </div>
+</section>
+</div>
+</div>
+<section style="margin-top:18px">
+  <h2>Report</h2>
+  <div class="actions">
+    <button id="pdfBtn" disabled>Download PDF report</button>
+    <button id="copy" class="ghost" disabled>Copy text report</button>
+  </div>
+  <div class="status" id="repStatus">Drop the graph PDF to begin.</div>
+  <pre id="report"></pre>
+</section>
+</div>
+<script>
+const LOGO="data:image/jpeg;base64,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";
+const $=id=>document.getElementById(id);$("logoImg").src=LOGO;
+if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const LANES=["3m L","3m R","6m L","6m R"];let graphs=[],gid=0;
+
+const drop=$("drop"),fileIn=$("fileIn");
+drop.onclick=()=>fileIn.click();
+drop.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fileIn.click()}};
+drop.ondragover=e=>{e.preventDefault();drop.classList.add("over")};
+drop.ondragleave=()=>drop.classList.remove("over");
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove("over");handle([...e.dataTransfer.files])};
+fileIn.onchange=()=>{handle([...fileIn.files]);fileIn.value=""};
+document.addEventListener("paste",e=>{const f=[...e.clipboardData.files];if(f.length)handle(f)});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function handle(files){
+  for(const f of files){
+    try{
+      $("readStatus").textContent="Reading "+f.name+"…";
+      const pages=await toPages(f);
+      pages.forEach((p,i)=>addGraph(p,pages.length>1?`Page ${i+1}`:f.name));
+      $("readStatus").textContent=`${f.name}: ${pages.length} page(s) read.`;
+    }catch(err){$("readStatus").innerHTML=`<span class="err">Could not read ${esc(f.name)}: ${esc(err.message||err)}</span>`}
+  }
+}
+async function toPages(f){
+  if(f.type==="application/pdf"||/\.pdf$/i.test(f.name)){
+    if(!window.pdfjsLib)throw new Error("PDF reader did not load.");
+    const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise,out=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p),vp=page.getViewport({scale:2.5});
+      const c=document.createElement("canvas");c.width=vp.width;c.height=vp.height;
+      await page.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
+      const tc=await page.getTextContent();
+      const items=tc.items.map(it=>{const [x,y]=vp.convertToViewportPoint(it.transform[4],it.transform[5]);return{s:it.str,x,y}});
+      out.push({canvas:c,items});
+    }
+    return out;
+  }
+  const url=URL.createObjectURL(f),img=new Image();img.src=url;await img.decode();
+  const c=document.createElement("canvas");c.width=img.naturalWidth;c.height=img.naturalHeight;
+  const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0);URL.revokeObjectURL(url);
+  return[{canvas:c,items:[]}];
+}
+
+/* ---------- image analysis ---------- */
+const near=(r,g,b,R,G,B,t)=>Math.abs(r-R)<t&&Math.abs(g-G)<t&&Math.abs(b-B)<t;
+function findPlot(d,W,H){let L=W,R=-1,B=-1,T=H;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x+=2){const i=(y*W+x)*4,r=d[i],g=d[i+1],b=d[i+2];
+    if(near(r,g,b,210,122,122,28)){if(x<L)L=x;if(x>R)R=x;if(y>B)B=y}
+    else if(near(r,g,b,125,190,133,28)){if(y<T)T=y}}
+  return R<0||T>=H?null:{L,R,T,B}}
+function classify(r,g,b){if(b>150&&r<90&&g<90&&b-r>90)return 2;if(Math.abs(r-g)<14&&Math.abs(g-b)<14&&r>65&&r<140)return 1;return 0}
+function extract(c){const W=c.width,H=c.height,d=c.getContext("2d").getImageData(0,0,W,H).data;
+  const p=findPlot(d,W,H);if(!p)throw new Error("Coloured friction bands not found on this page.");
+  const S={1:new Array(p.R-p.L+1).fill(null),2:new Array(p.R-p.L+1).fill(null)};
+  for(let x=p.L+2;x<=p.R-2;x++){const acc={1:[],2:[]};
+    for(let y=p.T+2;y<=p.B-2;y++){const i=(y*W+x)*4,k=classify(d[i],d[i+1],d[i+2]);if(k)acc[k].push(y)}
+    for(const k of[1,2]){const a=acc[k];if(a.length)S[k][x-p.L]={mu:(p.B-a.reduce((s,v)=>s+v,0)/a.length)/(p.B-p.T),lo:(p.B-Math.max(...a))/(p.B-p.T)}}}
+  return{plot:p,series:S}}
+/* read speed, width, date and distance scale from the page text */
+function readMeta(items,plot){
+  const all=items.map(i=>i.s).join(" ");const m={};
+  const sp=all.match(/\b(95|65)\s*km\/?h/i);if(sp)m.speed=sp[1];
+  const w=all.match(/\b([36])\s*m\b/);if(w)m.width=w[1]+"m";
+  const dt=all.match(/\b(\d{2}\.\d{2}\.\d{4})\b/);if(dt)m.date=dt[1];
+  const ticks=items.filter(i=>i.y>plot.B&&i.y<plot.B+140&&/^\d{1,3}(,\d{3})*$/.test(i.s.trim())).map(i=>({v:+i.s.replace(/,/g,""),x:i.x}));
+  if(ticks.length>=4){const n=ticks.length,mx=ticks.reduce((s,t)=>s+t.v,0)/n,my=ticks.reduce((s,t)=>s+t.x,0)/n;
+    let num=0,den=0;ticks.forEach(t=>{num+=(t.v-mx)*(t.x-my);den+=(t.v-mx)**2});const a=num/den;
+    if(a>0)m.maxDist=Math.round((plot.R-plot.L)/a);}
+  return m}
+function addGraph(pg,name){
+  const id=++gid,box=document.createElement("div");box.className="file";$("files").append(box);let res;
+  try{res=extract(pg.canvas)}catch(e){box.innerHTML=`<h3>${esc(name)}</h3><div class="status">${esc(e.message)} Skipped.</div>`;return}
+  const meta=readMeta(pg.items,res.plot);
+  const width=meta.width||"3m";
+  const g={id,name,res,canvas:pg.canvas,speed:meta.speed||"95",maxDist:meta.maxDist||3330,lane1:width+" L",lane2:width+" R"};graphs.push(g);
+  if(meta.date&&!$("date").dataset.touched)$("date").value=meta.date;
+  const cnt=k=>res.series[k].filter(Boolean).length;
+  box.innerHTML=`<h3><span>${esc(name)}: ${g.speed} km/h, ${width}${meta.speed?"":" (speed not detected, please check)"}</span><button class="ghost" data-rm>Remove</button></h3>
+  <canvas class="prev"></canvas>
+  <div class="legend">Traces read:<b style="background:#6b6b6b"></b>grey ${cnt(1)} px<b style="background:#0000ff"></b>blue ${cnt(2)} px. Red dots show the values read back.</div>
+  <div class="fields">
+   <label>Test speed<select data-k="speed"><option value="95">95 km/h</option><option value="65">65 km/h</option></select></label>
+   <label>Distance at right edge (m)<input data-k="maxDist" type="number" step="10"></label>
+   <label>Grey trace (01R run)<select data-k="lane1">${LANES.map(l=>`<option>${l}</option>`).join("")}<option value="">Ignore</option></select></label>
+   <label>Blue trace (19L run)<select data-k="lane2">${LANES.map(l=>`<option>${l}</option>`).join("")}<option value="">Ignore</option></select></label>
+  </div>`;
+  box.querySelectorAll("[data-k]").forEach(el=>{el.value=g[el.dataset.k];el.onchange=()=>{g[el.dataset.k]=el.type==="number"?+el.value:el.value;generate()}});
+  box.querySelector("[data-rm]").onclick=()=>{graphs=graphs.filter(x=>x.id!==id);box.remove();generate()};
+  drawPreview(box.querySelector("canvas"),g);generate();
+}
+function drawPreview(pc,g){const p=g.res.plot,pad=40,sw=p.R-p.L+pad*2,sh=p.B-p.T+pad*2;pc.width=sw;pc.height=sh;
+  const x=pc.getContext("2d");x.drawImage(g.canvas,p.L-pad,p.T-pad,sw,sh,0,0,sw,sh);
+  x.strokeStyle="#e00";x.lineWidth=2;x.strokeRect(pad,pad,p.R-p.L,p.B-p.T);x.fillStyle="#e00";
+  for(const k of[1,2])g.res.series[k].forEach((v,i)=>{if(v&&i%6===0)x.fillRect(pad+i-1,pad+(1-v.mu)*(p.B-p.T)-1,3,3)})}
+
+/* ---------- analysis ---------- */
+function segments(g,k,L,stat){const s=g.res.series[k],n=s.length,out=[];
+  for(let a=0;a<g.maxDist;a+=L){const b=Math.min(a+L,g.maxDist),i0=Math.floor(a/g.maxDist*(n-1)),i1=Math.ceil(b/g.maxDist*(n-1)),v=[];
+    for(let i=i0;i<=i1;i++)if(s[i])v.push(stat==="min"?s[i].lo:s[i].mu);
+    if(v.length)out.push({a,b,v:stat==="min"?Math.min(...v):v.reduce((x,y)=>x+y,0)/v.length})}
+  return out}
+function merge(l){const m=[];for(const s of l){const p=m[m.length-1];if(p&&p.b===s.a){p.b=s.b}else m.push({...s})}return m}
+function analyse(){const L=+$("seg").value||60,stat=$("stat").value,R={};
+  for(const sp of["95","65"]){R[sp]={min:{},mnt:{}};LANES.forEach(l=>{R[sp].min[l]=[];R[sp].mnt[l]=[]})}
+  for(const g of graphs){const mn=+$("min"+g.speed).value,mt=+$("mnt"+g.speed).value;
+    for(const k of[1,2]){const lane=g["lane"+k];if(!lane)continue;const s=segments(g,k,L,stat);
+      R[g.speed].min[lane].push(...merge(s.filter(x=>x.v<mn)));R[g.speed].mnt[lane].push(...merge(s.filter(x=>x.v>=mn&&x.v<mt)))}}
+  for(const sp in R)for(const t in R[sp])for(const l in R[sp][t])R[sp][t][l].sort((a,b)=>a.a-b.a);
+  return R}
+/* the four report tables, in template order, with template minimum row counts */
+function tables(R){const f2=v=>(+v).toFixed(2);return[
+  {title:"Friction below the minimum level ",lvl:`(Minimum level \u201C\u00B5\u201D = below ${f2($("min95").value)})`,tail:" @ 95kmph.",kind:"min",data:R["95"].min,rows:2,col:[255,80,0]},
+  {title:"Friction below the maintenance level ",lvl:`(Maintenance level \u201C\u00B5\u201D =below ${f2($("mnt95").value)})`,tail:" @ 95 kmph.",kind:"mnt",data:R["95"].mnt,rows:2,col:[0,200,0]},
+  {title:"Friction below the minimum level ",lvl:`(Minimum level \u201C\u00B5\u201D = below ${f2($("min65").value)}) @ 65 kmph.`,tail:"",kind:"min",data:R["65"].min,rows:3,col:[255,80,0]},
+  {title:"Friction below the maintenance level ",lvl:`(Maintenance level \u201C\u00B5\u201D =below ${f2($("mnt65").value)})`,tail:" @ 65 kmph.",kind:"mnt",data:R["65"].mnt,rows:8,col:[0,200,0]}]}
+const cell=(d,l,r,k)=>{const s=d[l][r];return s?String(s[k]):"NIL"};
+
+/* ---------- text preview ---------- */
+function generate(){
+  const has=graphs.length>0;$("pdfBtn").disabled=!has;$("copy").disabled=!has;
+  if(!has){$("report").textContent="";$("repStatus").textContent="Drop the graph PDF to begin.";return}
+  const R=analyse(),f=$("from").value,pad=(s,n)=>String(s).padEnd(n);
+  let t=`AIRPORTS AUTHORITY OF INDIA\nDEPARTMENT OF TECHNICAL\n${$("hdr").value}\n\nRUNWAY FRICTION TESTING REPORT\n\nNAME OF AIRPORT : ${$("airport").value}     RUNWAY : ${$("rwy").value}\nDATE OF TEST    : ${$("date").value}     TIME : ${$("t95").value}@95Kmph / ${$("t65").value}@65Kmph\nALL MEASUREMENTS STARTS FROM THE BEGINNING OF RUNWAY ${f}\n\n`;
+  for(const tb of tables(R)){const n=Math.max(tb.rows,...LANES.map(l=>tb.data[l].length));
+    t+=tb.title+tb.lvl+tb.tail+"\n"+"SL.No | "+LANES.map(l=>pad(l.replace("m"," meters")+" From "+f,19)).join(" | ")+"\n      | "+LANES.map(()=>pad("From",9)+" "+pad("To",9)).join(" | ")+"\n";
+    for(let r=0;r<n;r++)t+=pad(String(r+1).padStart(2,"0"),6)+"| "+LANES.map(l=>pad(cell(tb.data,l,r,"a"),9)+" "+pad(cell(tb.data,l,r,"b"),9)).join(" | ")+"\n";t+="\n"}
+  t+=`All Measurement starts @ ${$("offset").value} meter from the beginning of ${f} Runway.\n${notes().map((n,i)=>`${i+1}. ${n}`).join("\n")}\n\nTest conducted by:\n • ${$("tech").value}, ${$("techD").value}\n • ${$("att").value}, ${$("attD").value}\n`;
+  const miss=[];for(const sp of["95","65"])for(const l of LANES)if(!graphs.some(g=>g.speed===sp&&(g.lane1===l||g.lane2===l)))miss.push(`${l} @${sp}`);
+  $("report").textContent=t;
+  $("repStatus").innerHTML=`Built from ${graphs.length} graph page(s).`+(miss.length?` <span class="err">No graph for: ${miss.join(", ")} (shown as NIL).</span>`:"")+" Check the red read-back dots before issuing.";
+}
+const notes=()=>["Where friction level is below minimum requires immediate attention for remedial measures to improve the friction level.","Where the friction level is below maintenance level plan for improving the friction level should be initiated.","The effected zone indicated should be correlated during maintenance through visual inspection.",`Before test run, the calibration value was checked and found to be satisfactory at ${$("calib").value} \u00B5`];
+
+/* ---------- PDF in the AAI template ---------- */
+function letterhead(doc,W){
+  doc.addImage(LOGO,"JPEG",18,10,34,19);
+  doc.setFont("helvetica","bold");doc.setFontSize(10.5);doc.setTextColor(0);
+  [["AIRPORTS AUTHORITY OF INDIA",17],["DEPARTMENT OF TECHNICAL",25],[$("hdr").value,33]].forEach(([s,y])=>{
+    const x=W/2+27,w=doc.getTextWidth(s);doc.text(s,x,y,{align:"center"});doc.setLineWidth(.3);doc.line(x-w/2,y+.8,x+w/2,y+.8)});
+}
+function buildPdf(){
+  const {jsPDF}=window.jspdf,doc=new jsPDF({unit:"mm",format:"a4"}),W=210,R=analyse(),f=$("from").value;
+  const M=22,TW=W-2*M,b={lineColor:0,lineWidth:.2,textColor:0,font:"helvetica",fontSize:9.5,halign:"center",valign:"middle",cellPadding:.9};
+  letterhead(doc,W);
+  doc.setFontSize(14);const tt="RUNWAY FRICTION TESTING REPORT",tw=doc.getTextWidth(tt);doc.text(tt,W/2+5,43,{align:"center"});doc.line(W/2+5-tw/2,44,W/2+5+tw/2,44);
+  // info table
+  doc.autoTable({startY:47,margin:{left:M,right:M},theme:"grid",styles:{...b,fontStyle:"bold"},
+    body:[[{content:"NAME OF AIRPORT"},{content:$("airport").value,styles:{textColor:[112,48,160]}},"RUNWAY",{content:$("rwy").value,styles:{textColor:[200,0,0]}}],
+      [{content:"DATE OF TEST",rowSpan:2},{content:$("date").value,rowSpan:2,styles:{textColor:[0,160,220]}},{content:"TIME",rowSpan:2},{content:$("t95").value+"@95Kmph",styles:{textColor:[112,48,160]}}],
+      [{content:$("t65").value+"@65Kmph",styles:{textColor:[112,48,160]}}],
+      [{content:"ALL MEASUREMENTS STARTS FROM THE BEGINNING OF RUNWAY",colSpan:3},{content:f,styles:{textColor:[0,112,192],fontStyle:"bold"}}]],
+    columnStyles:{0:{cellWidth:TW*.3},1:{cellWidth:TW*.24},2:{cellWidth:TW*.18},3:{cellWidth:TW*.28}}});
+  let y=doc.lastAutoTable.finalY+7;
+  for(const tb of tables(R)){
+    const n=Math.max(tb.rows,...LANES.map(l=>tb.data[l].length));
+    // heading in three colour runs, centred
+    doc.setFont("helvetica","bold");doc.setFontSize(9.5);
+    const parts=[[tb.title,[0,0,0]],[tb.lvl,tb.col],[tb.tail,[0,0,0]]],tot=parts.reduce((s,p)=>s+doc.getTextWidth(p[0]),0);
+    if(y>265){doc.addPage();y=20}
+    let x=W/2-tot/2+4;for(const[s,c]of parts){doc.setTextColor(...c);doc.text(s,x,y);x+=doc.getTextWidth(s)}doc.setTextColor(0);
+    const head=[[{content:"",rowSpan:1},...LANES.map(l=>({content:`${l[0]} meters ${l.slice(-1)}\nFrom ${f}\nR/W`,colSpan:2}))],["SL.No",...LANES.flatMap(()=>["From","To"])]];
+    const body=[];for(let r=0;r<n;r++)body.push([String(r+1).padStart(2,"0"),...LANES.flatMap(l=>[cell(tb.data,l,r,"a"),cell(tb.data,l,r,"b")])]);
+    doc.autoTable({startY:y+2,margin:{left:M,right:M},theme:"grid",head,body,styles:b,
+      headStyles:{fillColor:false,textColor:0,fontStyle:"normal",lineColor:0,lineWidth:.2},
+      columnStyles:{0:{cellWidth:TW*.08},...Object.fromEntries([...Array(8)].map((_,i)=>[i+1,{cellWidth:TW*.115}]))},
+      didParseCell:d=>{if(d.section==="head"&&d.row.index===0&&d.column.index>0){d.cell.styles.fontSize=9.5}}});
+    y=doc.lastAutoTable.finalY+8;
+  }
+  // page 2
+  doc.addPage();letterhead(doc,W);
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.text(`All Measurement starts @ ${$("offset").value} meter from the beginning of ${f} Runway.`,30,58);
+  doc.setFontSize(8.5);doc.text("Note:",30,63);doc.setFontSize(10);
+  let ny=69;notes().forEach((t,i)=>{const lines=doc.splitTextToSize(t,140);doc.text(`${i+1}.`,40,ny);doc.text(lines,46,ny);ny+=lines.length*5+1});
+  doc.setFont("helvetica","normal");doc.setFontSize(10);doc.text("Test conducted by:",22,ny+6);
+  doc.setFont("helvetica","bold");
+  [[$("tech").value,$("techD").value],[$("att").value,$("attD").value]].forEach(([n,d],i)=>{const yy=ny+14+i*9;doc.circle(37,yy-1.2,.8,"F");doc.text(`${n}, ${d}`,45,yy)});
+  return doc;
+}
+$("pdfBtn").onclick=async()=>{
+  try{
+    const doc=buildPdf(),name=`${$("airport").value}_Test_Report_${$("date").value.replace(/[\/]/g,"_")}.pdf`.replace(/\s+/g,"_");
+    const dl=await Promise.race([window.claude?.use?window.claude.use("downloads"):Promise.resolve(null),new Promise(r=>setTimeout(()=>r(null),3000))]);
+    if(dl){await dl.save({filename:name,data:doc.output("blob")});$("repStatus").textContent="PDF report saved."}
+    else{doc.save(name);$("repStatus").textContent="PDF report downloaded."}
+  }catch(e){$("repStatus").innerHTML=`<span class="err">${e&&e.code==="declined"?"Download cancelled.":"PDF could not be created: "+esc(e.message||e.code||e)}</span>`}
+};
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("report").textContent);$("repStatus").textContent="Text report copied."}catch{$("repStatus").textContent="Copy blocked; select the text and copy manually."}};
+$("date").addEventListener("input",()=>$("date").dataset.touched=1);
+document.querySelectorAll("input,select").forEach(el=>{if(!el.closest(".file")&&el.id!=="fileIn")el.addEventListener("input",generate)});
+(()=>{const d=new Date();$("date").value=String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()})();
+</script>
+</body>
+</html>
